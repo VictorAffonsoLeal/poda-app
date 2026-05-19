@@ -12,6 +12,27 @@ export default function NovaSolicitacaoPage() {
   const { user, userData, loading } = useAuth();
   const [arquivos, setArquivos] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  const [motivosSelecionados, setMotivosSelecionados] = useState<string[]>([]);
+  const [justificativaOutros, setJustificativaOutros] = useState("");
+
+  const motivosPadrao = [
+    "Galhos secos ou com risco de queda",
+    "Obstrução da rede elétrica ou fiação",
+    "Obstrução de sinalização de trânsito ou iluminação",
+    "Galhos atingindo telhado ou estrutura do imóvel",
+    "Raízes danificando calçada, muro ou tubulação",
+    "Árvore inclinada com risco de tombamento",
+    "Árvore morta ou visivelmente doente/apodrecida",
+    "Presença de pragas (cupins/brocas) no tronco",
+    "Poda de limpeza ou equilíbrio da copa"
+  ];
+
+  const handleMotivoChange = (motivo: string) => {
+    setMotivosSelecionados(prev => 
+      prev.includes(motivo) ? prev.filter(m => m !== motivo) : [...prev, motivo]
+    );
+  };
   
   const [formData, setFormData] = useState({
     cep: "",
@@ -69,10 +90,14 @@ export default function NovaSolicitacaoPage() {
       return;
     }
 
-    const justificativa = (document.getElementById('formulario-justificativa') as HTMLTextAreaElement)?.value;
+    // Monta a justificativa final
+    let justificativaFinal = motivosSelecionados.join(", ");
+    if (motivosSelecionados.includes("Outros") && justificativaOutros) {
+        justificativaFinal = justificativaFinal ? `${justificativaFinal}, Outros: ${justificativaOutros}` : `Outros: ${justificativaOutros}`;
+    }
 
-    if (!justificativa) {
-        alert('Preencha a justificativa.');
+    if (!justificativaFinal) {
+        alert('Selecione pelo menos um motivo para a solicitação.');
         return;
     }
 
@@ -101,14 +126,27 @@ export default function NovaSolicitacaoPage() {
 
       const duplicateSnapshot = await getDocs(duplicateQuery);
 
-      // 1. Upload das fotos
+      // 1. Upload das fotos via API PHP (Hostinger)
       const urls: string[] = [];
       if (arquivos.length > 0) {
-        for (const arquivo of arquivos) {
-          const fileRef = ref(storage, `solicitacoes/${user.uid}/${Date.now()}_${arquivo.name.replace(/[^a-zA-Z0-9.]/g, '')}`);
-          const snapshot = await uploadBytes(fileRef, arquivo);
-          const url = await getDownloadURL(snapshot.ref);
-          urls.push(url);
+        const formDataUpload = new FormData();
+        formDataUpload.append("userId", user.uid); // Enviando o ID do usuário
+        arquivos.forEach((arquivo) => {
+          formDataUpload.append("files[]", arquivo);
+        });
+
+        try {
+          const resUpload = await fetch("/api/upload.php", {
+            method: "POST",
+            body: formDataUpload,
+          });
+          const dataUpload = await resUpload.json();
+          if (dataUpload.urls) {
+            urls.push(...dataUpload.urls);
+          }
+        } catch (error) {
+          console.error("Erro no upload das imagens:", error);
+          alert("Erro ao enviar as imagens para o servidor. A solicitação continuará sem fotos.");
         }
       }
 
@@ -120,7 +158,7 @@ export default function NovaSolicitacaoPage() {
         const reforcoEntry = {
           data: new Date().toLocaleDateString('pt-BR'),
           status: existingDoc.data().status, // mantem o status atual
-          descricao: `[REFORÇO] Novo pedido registrado para esta árvore. Justificativa do cidadão: ${justificativa}`
+          descricao: `[REFORÇO] Novo pedido registrado para esta árvore. Motivos: ${justificativaFinal}`
         };
 
         const updatePayload: any = {
@@ -175,7 +213,7 @@ export default function NovaSolicitacaoPage() {
           {
             data: new Date().toLocaleDateString('pt-BR'),
             status: 'Criado',
-            descricao: `Solicitação criada. Justificativa: ${justificativa}`
+            descricao: `Solicitação criada. Motivos: ${justificativaFinal}`
           }
         ]
       };
@@ -289,8 +327,49 @@ export default function NovaSolicitacaoPage() {
                 </div>
             </div>
              <div>
-                <h3 className="text-lg font-semibold text-slate-700 border-b pb-2 mb-4">Justificativa</h3>
-                <textarea id="formulario-justificativa" rows={4} className="block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" placeholder="Descreva o motivo da sua solicitação..." required></textarea>
+                <h3 className="text-lg font-semibold text-slate-700 border-b pb-2 mb-4">Justificativa / Motivo do Pedido</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                  {motivosPadrao.map((motivo, index) => (
+                    <div key={index} className="flex items-start gap-2 p-2 rounded hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-colors">
+                      <input 
+                        type="checkbox" 
+                        id={`motivo-${index}`} 
+                        checked={motivosSelecionados.includes(motivo)}
+                        onChange={() => handleMotivoChange(motivo)}
+                        className="mt-1 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500" 
+                      />
+                      <label htmlFor={`motivo-${index}`} className="text-sm text-slate-700 cursor-pointer leading-tight">
+                        {motivo}
+                      </label>
+                    </div>
+                  ))}
+                  <div className="flex items-start gap-2 p-2 rounded hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-colors">
+                      <input 
+                        type="checkbox" 
+                        id="motivo-outros" 
+                        checked={motivosSelecionados.includes("Outros")}
+                        onChange={() => handleMotivoChange("Outros")}
+                        className="mt-1 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500" 
+                      />
+                      <label htmlFor="motivo-outros" className="text-sm font-bold text-slate-700 cursor-pointer leading-tight">
+                        Outros / Mais Detalhes
+                      </label>
+                    </div>
+                </div>
+
+                {motivosSelecionados.includes("Outros") && (
+                  <div className="mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <label htmlFor="outro-motivo-texto" className="block text-sm font-medium text-slate-600 mb-1">Descreva detalhadamente:</label>
+                    <textarea 
+                      id="outro-motivo-texto" 
+                      rows={4} 
+                      value={justificativaOutros}
+                      onChange={e => setJustificativaOutros(e.target.value)}
+                      className="block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" 
+                      placeholder="Explique aqui o que está acontecendo..."
+                    ></textarea>
+                  </div>
+                )}
             </div>
 
             <div className="space-y-4 pt-4 border-t border-slate-200">

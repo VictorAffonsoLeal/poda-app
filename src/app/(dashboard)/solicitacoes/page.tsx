@@ -77,7 +77,7 @@ export default function ListaSolicitacoesPage() {
                     return (
                         <div 
                             key={solicitacao.id} 
-                            onClick={() => router.push(`/solicitacoes/${solicitacao.id}`)} 
+                            onClick={() => router.push(`/solicitacoes/detalhe?id=${solicitacao.id}`)} 
                             className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 border rounded-lg hover:bg-slate-50 cursor-pointer"
                         >
                             <div className="mb-2 md:mb-0">

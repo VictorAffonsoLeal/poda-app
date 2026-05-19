@@ -38,7 +38,7 @@ export default function LoginPage() {
     <div id="aplicativo-container" className="min-h-screen flex flex-col items-center p-4 py-8 sm:justify-center">
       <section id="tela-login" className="w-full max-w-sm mx-auto flex flex-col items-center justify-center">
         <header className="text-center mb-6">
-            <img src="https://www.riopreto.sp.gov.br/wp-content/uploads/2022/01/brasao-colorido-e-texto-prefeitura-SJRP-2021.png" alt="Logo Prefeitura de São José do Rio Preto" className="h-28 mx-auto mb-4" />
+            <img src="/logo-rp.png" alt="Logo Prefeitura de Rio Preto" className="h-28 mx-auto mb-4" />
             <h1 className="text-3xl font-bold text-slate-700">Bem-vindo!</h1>
             <p className="text-slate-500">Acesse sua conta para continuar</p>
         </header>

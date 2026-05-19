@@ -1,18 +1,27 @@
 "use client";
 
-import { useState, use, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { useAuth } from "@/context/AuthContext";
 
-export default function DetalheSolicitacaoPage({ params }: { params: Promise<{ id: string }> }) {
+function DetalheSolicitacaoContent() {
   const router = useRouter();
-  const { id } = use(params);
+  const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id");
+  
   const [arquivos, setArquivos] = useState<File[]>([]);
   const [solicitacao, setSolicitacao] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+
     const fetchSolicitacao = async () => {
       try {
         const docRef = doc(db, "solicitacoes", id);
@@ -56,21 +65,51 @@ export default function DetalheSolicitacaoPage({ params }: { params: Promise<{ i
     }
     
     try {
-      const docRef = doc(db, "solicitacoes", id);
+      const docRef = doc(db, "solicitacoes", id!);
       
+      // 1. Upload das novas fotos (se houver)
+      const novasUrls: string[] = [];
+      if (arquivos.length > 0) {
+        const formDataUpload = new FormData();
+        if (user) formDataUpload.append("userId", user.uid);
+        arquivos.forEach((arquivo) => {
+          formDataUpload.append("files[]", arquivo);
+        });
+
+        try {
+          const resUpload = await fetch("/api/upload.php", {
+            method: "POST",
+            body: formDataUpload,
+          });
+          const dataUpload = await resUpload.json();
+          if (dataUpload.urls) {
+            novasUrls.push(...dataUpload.urls);
+          }
+        } catch (error) {
+          console.error("Erro no upload das imagens de reanálise:", error);
+        }
+      }
+
       const novoHistorico = [
         {
           data: new Date().toLocaleDateString('pt-BR'),
           status: 'Em Análise',
-          descricao: `Pedido de reanálise recebido. Nova justificativa: ${novaJustificativa}`
+          descricao: `Pedido de reanálise recebido. Nova justificativa: ${novaJustificativa}${novasUrls.length > 0 ? " (Novas fotos anexadas)" : ""}`
         },
         ...solicitacao.historico
       ];
 
-      await updateDoc(docRef, {
+      const updatePayload: any = {
         status: 'Em Análise',
         historico: novoHistorico
-      });
+      };
+
+      if (novasUrls.length > 0) {
+        // Adiciona as novas fotos ao array existente de fotos
+        updatePayload.fotos = [...(solicitacao.fotos || []), ...novasUrls];
+      }
+
+      await updateDoc(docRef, updatePayload);
 
       alert('Pedido de reanálise enviado.');
       router.push("/solicitacoes");
@@ -151,5 +190,13 @@ export default function DetalheSolicitacaoPage({ params }: { params: Promise<{ i
             )}
         </main>
     </section>
+  );
+}
+
+export default function DetalheSolicitacaoPage() {
+  return (
+    <Suspense fallback={<p>Carregando...</p>}>
+      <DetalheSolicitacaoContent />
+    </Suspense>
   );
 }
