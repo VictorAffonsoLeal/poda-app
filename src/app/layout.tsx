@@ -1,11 +1,20 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import { ToastProvider } from "@/context/ToastContext";
 
 export const metadata: Metadata = {
   title: "Poda Digital - São José do Rio Preto",
   description: "App de Fiscalização de Poda de Árvore",
   manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Poda Digital",
+  },
+  icons: {
+    apple: "/logo-rp.png",
+  },
 };
 
 export const viewport: Viewport = {
@@ -24,7 +33,9 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body className="bg-slate-100 font-sans text-slate-800 antialiased min-h-screen">
         <AuthProvider>
-          {children}
+          <ToastProvider>
+            {children}
+          </ToastProvider>
         </AuthProvider>
       </body>
     </html>

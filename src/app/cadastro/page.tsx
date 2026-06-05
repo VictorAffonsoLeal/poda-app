@@ -6,13 +6,40 @@ import { useRouter } from "next/navigation";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
+import { useToast } from "@/context/ToastContext";
+
+const formatCPFOrCNPJ = (value: string) => {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length <= 11) {
+    return digits
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d)/, "$1.$2")
+      .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+  } else {
+    return digits
+      .substring(0, 14)
+      .replace(/^(\d{2})(\d)/, "$1.$2")
+      .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+      .replace(/\.(\d{3})(\d)/, ".$1/$2")
+      .replace(/(\d{4})(\d{1,2})$/, "$1-$2");
+  }
+};
+
+const formatCEP = (value: string) => {
+  const digits = value.replace(/\D/g, "");
+  return digits
+    .substring(0, 8)
+    .replace(/^(\d{5})(\d)/, "$1-$2");
+};
 
 export default function CadastroPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const { showToast } = useToast();
   
+  const [cpf, setCpf] = useState("");
   const [cep, setCep] = useState("");
   const [logradouro, setLogradouro] = useState("");
   const [bairro, setBairro] = useState("");
@@ -28,11 +55,11 @@ export default function CadastroPage() {
           setLogradouro(data.logradouro);
           setBairro(data.bairro);
         } else {
-          alert("CEP não encontrado.");
+          showToast("CEP não encontrado.", "warning");
         }
       } catch (error) {
         console.error("Erro ao buscar CEP:", error);
-        alert("Erro ao conectar com o serviço de CEP.");
+        showToast("Erro ao conectar com o serviço de CEP.", "error");
       }
     }
   };
@@ -47,7 +74,7 @@ export default function CadastroPage() {
     const senhaConfirmacao = (document.getElementById('cadastro-senha-confirmacao') as HTMLInputElement).value;
 
     if (senha !== senhaConfirmacao) {
-      alert("As senhas não coincidem!");
+      showToast("As senhas não coincidem!", "warning");
       return;
     }
 
@@ -86,14 +113,14 @@ export default function CadastroPage() {
         createdAt: new Date().toISOString()
       });
 
-      alert("Conta criada com sucesso!");
+      showToast("Conta criada com sucesso!", "success");
       router.push("/");
     } catch (error: any) {
       console.error("Erro ao criar conta:", error);
       if (error.code === 'auth/email-already-in-use') {
-        alert("Este e-mail já está em uso.");
+        showToast("Este e-mail já está em uso.", "error");
       } else {
-        alert("Erro ao criar conta. Tente novamente.");
+        showToast("Erro ao criar conta. Tente novamente.", "error");
       }
     } finally {
       setIsLoading(false);
@@ -118,7 +145,16 @@ export default function CadastroPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label htmlFor="cadastro-cpf" className="block text-sm font-medium text-slate-600">CPF / CNPJ</label>
-                        <input type="text" id="cadastro-cpf" className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" placeholder="000.000.000-00" required />
+                        <input 
+                          type="text" 
+                          id="cadastro-cpf" 
+                          value={cpf} 
+                          onChange={e => setCpf(formatCPFOrCNPJ(e.target.value))} 
+                          maxLength={18} 
+                          className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" 
+                          placeholder="000.000.000-00" 
+                          required 
+                        />
                     </div>
                     <div>
                         <label htmlFor="cadastro-email" className="block text-sm font-medium text-slate-600">E-mail</label>
@@ -130,14 +166,32 @@ export default function CadastroPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                       <div className="md:col-span-1">
                           <label htmlFor="cadastro-cep" className="block text-sm font-medium text-slate-600">CEP</label>
-                          <input type="text" id="cadastro-cep" value={cep} onChange={e => setCep(e.target.value)} onBlur={buscarCep} placeholder="15000-000" className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" required />
+                          <input 
+                            type="text" 
+                            id="cadastro-cep" 
+                            value={cep} 
+                            onChange={e => setCep(formatCEP(e.target.value))} 
+                            onBlur={buscarCep} 
+                            placeholder="15000-000" 
+                            maxLength={9} 
+                            className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" 
+                            required 
+                          />
                       </div>
                       <div className="md:col-span-2">
                           <button type="button" onClick={buscarCep} className="w-full bg-slate-200 text-slate-700 py-2 px-4 rounded-md hover:bg-slate-300 font-semibold text-sm">Buscar Endereço</button>
                       </div>
                       <div className="md:col-span-3">
                           <label htmlFor="cadastro-logradouro" className="block text-sm font-medium text-slate-600">Logradouro</label>
-                          <input type="text" id="cadastro-logradouro" value={logradouro} readOnly placeholder="Preenchido automaticamente" className="mt-1 block w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-md text-sm" required />
+                          <input 
+                            type="text" 
+                            id="cadastro-logradouro" 
+                            value={logradouro} 
+                            onChange={(e) => setLogradouro(e.target.value)} 
+                            placeholder="Nome da rua/avenida" 
+                            className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" 
+                            required 
+                          />
                       </div>
                       <div>
                           <label htmlFor="cadastro-numero" className="block text-sm font-medium text-slate-600">Número</label>
@@ -145,7 +199,15 @@ export default function CadastroPage() {
                       </div>
                       <div className="md:col-span-2">
                           <label htmlFor="cadastro-bairro" className="block text-sm font-medium text-slate-600">Bairro</label>
-                          <input type="text" id="cadastro-bairro" value={bairro} readOnly placeholder="Preenchido automaticamente" className="mt-1 block w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-md text-sm" required />
+                          <input 
+                            type="text" 
+                            id="cadastro-bairro" 
+                            value={bairro} 
+                            onChange={(e) => setBairro(e.target.value)} 
+                            placeholder="Nome do bairro" 
+                            className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" 
+                            required 
+                          />
                       </div>
                   </div>
 

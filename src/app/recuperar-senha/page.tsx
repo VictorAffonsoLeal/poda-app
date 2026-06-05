@@ -6,10 +6,13 @@ import { useRouter } from "next/navigation";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 
+import { useToast } from "@/context/ToastContext";
+
 export default function RecuperarSenhaPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const { showToast } = useToast();
 
   const recuperarSenha = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,11 +20,11 @@ export default function RecuperarSenhaPage() {
       setIsLoading(true);
       try {
         await sendPasswordResetEmail(auth, email);
-        alert("Instruções de recuperação enviadas para o seu e-mail!");
+        showToast("Instruções de recuperação enviadas para o seu e-mail!", "success");
         router.push("/login");
       } catch (error: any) {
         console.error("Erro ao recuperar senha:", error);
-        alert("Erro ao enviar e-mail de recuperação. Verifique o endereço digitado.");
+        showToast("Erro ao enviar e-mail de recuperação. Verifique o endereço digitado.", "error");
       } finally {
         setIsLoading(false);
       }
