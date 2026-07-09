@@ -131,7 +131,7 @@ export default function CadastroPage() {
     <div id="aplicativo-container" className="min-h-screen flex flex-col items-center p-4 py-8 sm:justify-center">
       <section id="tela-cadastro" className="w-full max-w-lg mx-auto flex flex-col items-center justify-center">
           <header className="text-center mb-8">
-              <img src="https://www.riopreto.sp.gov.br/wp-content/uploads/2022/01/brasao-colorido-e-texto-prefeitura-SJRP-2021.png" alt="Logo Prefeitura" className="h-24 mx-auto mb-4" />
+              <img src="/logo-rp.png" alt="Logo Prefeitura de Rio Preto" className="h-28 mx-auto mb-4" />
               <h1 className="text-3xl font-bold text-slate-700">Criar Conta</h1>
               <p className="text-slate-500">Preencha os dados para se cadastrar</p>
           </header>
@@ -140,7 +140,7 @@ export default function CadastroPage() {
                   <h3 className="text-lg font-semibold text-slate-700 border-b pb-2">Dados Pessoais</h3>
                   <div>
                       <label htmlFor="cadastro-nome" className="block text-sm font-medium text-slate-600">Nome Completo</label>
-                      <input type="text" id="cadastro-nome" className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" placeholder="Seu nome completo" required />
+                      <input type="text" id="cadastro-nome" className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-800 font-medium" placeholder="Seu nome completo" required />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -151,14 +151,14 @@ export default function CadastroPage() {
                           value={cpf} 
                           onChange={e => setCpf(formatCPFOrCNPJ(e.target.value))} 
                           maxLength={18} 
-                          className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" 
+                          className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-800 font-medium" 
                           placeholder="000.000.000-00" 
                           required 
                         />
                     </div>
                     <div>
                         <label htmlFor="cadastro-email" className="block text-sm font-medium text-slate-600">E-mail</label>
-                        <input type="email" id="cadastro-email" className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" placeholder="seu@email.com" required />
+                        <input type="email" id="cadastro-email" className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-800 font-medium" placeholder="seu@email.com" required />
                     </div>
                   </div>
                   
@@ -174,7 +174,7 @@ export default function CadastroPage() {
                             onBlur={buscarCep} 
                             placeholder="15000-000" 
                             maxLength={9} 
-                            className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" 
+                            className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-800 font-medium" 
                             required 
                           />
                       </div>
@@ -189,13 +189,13 @@ export default function CadastroPage() {
                             value={logradouro} 
                             onChange={(e) => setLogradouro(e.target.value)} 
                             placeholder="Nome da rua/avenida" 
-                            className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" 
+                            className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-800 font-medium" 
                             required 
                           />
                       </div>
                       <div>
                           <label htmlFor="cadastro-numero" className="block text-sm font-medium text-slate-600">Número</label>
-                          <input type="text" id="cadastro-numero" placeholder="123" className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" required />
+                          <input type="text" id="cadastro-numero" placeholder="123" className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-800 font-medium" required />
                       </div>
                       <div className="md:col-span-2">
                           <label htmlFor="cadastro-bairro" className="block text-sm font-medium text-slate-600">Bairro</label>
@@ -205,7 +205,7 @@ export default function CadastroPage() {
                             value={bairro} 
                             onChange={(e) => setBairro(e.target.value)} 
                             placeholder="Nome do bairro" 
-                            className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" 
+                            className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-800 font-medium" 
                             required 
                           />
                       </div>
@@ -215,14 +215,14 @@ export default function CadastroPage() {
                   <div>
                       <label htmlFor="cadastro-senha" className="block text-sm font-medium text-slate-600">Senha</label>
                       <div className="relative mt-1">
-                          <input type={showPassword ? "text" : "password"} id="cadastro-senha" className="block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm pr-10" placeholder="Crie uma senha forte" required />
+                          <input type={showPassword ? "text" : "password"} id="cadastro-senha" className="block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm pr-10 text-slate-800 font-medium" placeholder="Crie uma senha forte" required />
                            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500"><span id="icone-senha-cadastro">👁️</span></button>
                       </div>
                   </div>
                   <div>
                       <label htmlFor="cadastro-senha-confirmacao" className="block text-sm font-medium text-slate-600">Confirmar Senha</label>
                       <div className="relative mt-1">
-                         <input type={showConfirmPassword ? "text" : "password"} id="cadastro-senha-confirmacao" className="block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm pr-10" placeholder="Repita a senha" required />
+                         <input type={showConfirmPassword ? "text" : "password"} id="cadastro-senha-confirmacao" className="block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm pr-10 text-slate-800 font-medium" placeholder="Repita a senha" required />
                           <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500"><span id="icone-senha-confirmacao">👁️</span></button>
                       </div>
                   </div>

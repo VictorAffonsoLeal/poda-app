@@ -20,6 +20,8 @@ body {
 .status-aprovado { background-color: #10b981; color: white; }
 .status-recusado { background-color: #ef4444; color: white; }
 .status-criado { background-color: #3b82f6; color: white; }
+.status-aguardando-validacao, .status-aguardando-validação { background-color: #8b5cf6; color: white; }
+.status-concluido, .status-concluído { background-color: #2563eb; color: white; }
 
 /* Estilos para o sistema de notificação (toast) */
 .notificacao-toast {

@@ -47,7 +47,7 @@ export default function RecuperarSenhaPage() {
                           id="email-recuperacao" 
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
-                          className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm" 
+                          className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-850 font-medium" 
                           placeholder="seu@email.com" 
                           required 
                         />

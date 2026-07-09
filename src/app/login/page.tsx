@@ -58,7 +58,7 @@ export default function LoginPage() {
                       id="email-login" 
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm" 
+                      className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm text-slate-850 font-medium" 
                       placeholder="seu@email.com" 
                       required
                     />
@@ -74,7 +74,7 @@ export default function LoginPage() {
                           id="senha-login" 
                           value={senha}
                           onChange={(e) => setSenha(e.target.value)}
-                          className="block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm pr-10" 
+                          className="block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm pr-10 text-slate-850 font-medium" 
                           placeholder="••••••••" 
                           required
                         />

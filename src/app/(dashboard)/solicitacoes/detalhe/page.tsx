@@ -43,9 +43,11 @@ function DetalheSolicitacaoContent() {
   const [solicitacao, setSolicitacao] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isSendingReanalise, setIsSendingReanalise] = useState(false);
+  const [isSendingComprovacao, setIsSendingComprovacao] = useState(false);
 
   const [selectedPreview, setSelectedPreview] = useState<string | null>(null);
   const [showPickerModal, setShowPickerModal] = useState(false);
+  const [showCertificateModal, setShowCertificateModal] = useState(false);
 
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -234,6 +236,74 @@ function DetalheSolicitacaoContent() {
     }
   };
 
+  const enviarComprovacaoPoda = async () => {
+    if (arquivos.length === 0) {
+      showToast('Por favor, adicione pelo menos uma foto de comprovação.', 'warning');
+      return;
+    }
+
+    setIsSendingComprovacao(true);
+    try {
+      const docRef = doc(db, "solicitacoes", id!);
+      const novasUrls: string[] = [];
+
+      const formDataUpload = new FormData();
+      if (user) formDataUpload.append("userId", user.uid);
+      arquivos.forEach((arquivo) => {
+        formDataUpload.append("files[]", arquivo);
+      });
+
+      try {
+        const resUpload = await fetch(getUploadUrl(), {
+          method: "POST",
+          body: formDataUpload,
+        });
+        const dataUpload = await resUpload.json();
+        if (dataUpload.urls) {
+          novasUrls.push(...dataUpload.urls);
+        }
+      } catch (error) {
+        console.error("Erro no upload das imagens de comprovação:", error);
+        throw new Error("Falha ao enviar arquivos para o servidor.");
+      }
+
+      if (novasUrls.length === 0) {
+        throw new Error("Nenhuma foto foi enviada com sucesso.");
+      }
+
+      const novasFotos = novasUrls.map(url => ({
+        url,
+        autor: "usuario_corte",
+        data: new Date().toLocaleDateString('pt-BR')
+      }));
+
+      const novoHistorico = [
+        {
+          data: new Date().toLocaleDateString('pt-BR'),
+          status: 'Aguardando Validação',
+          descricao: `Comprovação de execução enviada. Fotos pós-corte anexadas.`
+        },
+        ...solicitacao.historico
+      ];
+
+      const updatePayload: any = {
+        status: 'Aguardando Validação',
+        historico: novoHistorico,
+        fotos: [...(solicitacao.fotos || []), ...novasFotos]
+      };
+
+      await updateDoc(docRef, updatePayload);
+
+      showToast('Comprovação de execução enviada com sucesso!', 'success');
+      router.push("/solicitacoes");
+    } catch (e: any) {
+      console.error("Erro ao enviar comprovação de poda:", e);
+      showToast(e.message || "Erro ao enviar comprovação.", 'error');
+    } finally {
+      setIsSendingComprovacao(false);
+    }
+  };
+
   const classeStatus = solicitacao.status.toLowerCase().replace(' ', '-').replace('á', 'a');
 
   return (
@@ -262,7 +332,7 @@ function DetalheSolicitacaoContent() {
                   </span>
                   <h2 className="text-lg sm:text-xl font-extrabold text-slate-800 truncate">{solicitacao.address}</h2>
                   <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5" /> Protocolo: #{solicitacao.id.substring(0, 8)}
+                    <FileText className="w-3.5 h-3.5" /> Protocolo: #{/^\d{14}$/.test(solicitacao.id) ? solicitacao.id : solicitacao.id.substring(0, 8)}
                   </p>
                 </div>
                 
@@ -271,6 +341,40 @@ function DetalheSolicitacaoContent() {
                 </div>
             </div>
             
+            {/* Aviso de Ação Requerida para Status Aprovado */}
+            {solicitacao.status === 'Aprovado' && (
+              <div className="bg-amber-50 border border-amber-250 p-4 rounded-xl flex gap-3 text-amber-900 text-xs shadow-sm">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0 text-amber-600 mt-0.5 animate-pulse" />
+                <div className="space-y-1">
+                  <h4 className="font-extrabold text-amber-955">Ação Necessária: Enviar Foto de Comprovação</h4>
+                  <p className="leading-relaxed font-semibold">
+                    Sua solicitação foi **Aprovada** pelo município! Para finalizar o chamado, você precisa executar o serviço e **enviar a foto da árvore podada** usando o formulário de comprovação no final desta página.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {solicitacao.status === 'Concluído' && solicitacao.concederCertificado === true && (
+              <div className="bg-emerald-50 border border-emerald-250 p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4 text-emerald-950 shadow-sm relative overflow-hidden">
+                <div className="absolute -right-8 -bottom-8 opacity-10 text-7xl pointer-events-none select-none">🏆</div>
+                <div className="flex gap-3 items-start">
+                  <span className="text-2xl shrink-0 mt-0.5">🌱</span>
+                  <div className="space-y-1">
+                    <h4 className="font-extrabold text-emerald-900 text-sm">Certificado de Agradecimento Disponível!</h4>
+                    <p className="text-[11px] text-slate-650 leading-relaxed font-semibold">
+                      Muito obrigado por sua contribuição com o meio ambiente! Sua solicitação foi concluída e a prefeitura emitiu um **Certificado de Reconhecimento**.
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowCertificateModal(true)}
+                  className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-extrabold py-2 px-4 rounded-xl text-xs transition-all shadow-md shrink-0 cursor-pointer flex items-center justify-center gap-1 hover:scale-[1.02] transform active:scale-95"
+                >
+                  <span>🏆 Ver Certificado</span>
+                </button>
+              </div>
+            )}
+
             {/* Timeline Tracking */}
             <div className="space-y-4">
               <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
@@ -293,6 +397,93 @@ function DetalheSolicitacaoContent() {
                 })}
               </div>
             </div>
+
+            {/* Proof of Execution Block (If status is Aprovado) */}
+            {solicitacao.status === 'Aprovado' && (
+                <div className="border-t mt-6 pt-6 border-dashed border-emerald-250 bg-emerald-50/10 p-5 rounded-2xl space-y-4">
+                    <div className="flex items-center gap-2 text-emerald-800">
+                      <Camera className="w-5 h-5 flex-shrink-0 text-emerald-600" />
+                      <h3 className="text-sm sm:text-base font-extrabold">Comprovação de Execução da Poda</h3>
+                    </div>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      Sua solicitação de poda foi autorizada. Após realizar a execução do serviço de poda/corte no local, você **deve enviar fotos da árvore cortada/podada** como comprovação para que o município possa homologar e concluir o seu chamado.
+                    </p>
+                    
+                    <div className="space-y-4">
+                         <div>
+                            <label className="block text-xs font-bold text-slate-600 uppercase mb-2">Fotos de Comprovação pós-corte <span className="text-red-500">*</span></label>
+                            
+                            {/* Photo Upload Area */}
+                            <div 
+                              onClick={() => setShowPickerModal(true)} 
+                              className="flex flex-col items-center justify-center px-6 pt-6 pb-7 border-2 border-slate-300 border-dashed rounded-2xl cursor-pointer hover:border-emerald-500 hover:bg-slate-50/50 transition-all text-center group"
+                            >
+                              <div className="w-11 h-11 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 group-hover:text-emerald-600 group-hover:bg-emerald-50 transition-colors mb-3 border border-slate-200/50">
+                                <Upload className="w-5 h-5" />
+                              </div>
+                              <div className="flex text-xs text-slate-600 font-semibold mb-1">
+                                <span className="text-emerald-600 group-hover:text-emerald-700 font-bold">Adicionar fotos do corte</span>
+                              </div>
+                              <p className="text-[10px] text-slate-500">Tire uma foto ou selecione do aparelho</p>
+                            </div>
+
+                            {/* Selected Previews Grid */}
+                            {arquivos.length > 0 && (
+                              <div className="mt-5 space-y-2.5">
+                                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fotos Selecionadas ({arquivos.length})</h4>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                  {arquivos.map((file, idx) => {
+                                    const fileUrl = URL.createObjectURL(file);
+                                    return (
+                                      <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-slate-50 group">
+                                        <img 
+                                          src={fileUrl} 
+                                          alt={`Preview ${idx}`} 
+                                          className="w-full h-full object-cover" 
+                                        />
+                                        {/* Actions Overlay */}
+                                        <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                          <button 
+                                            type="button" 
+                                            onClick={() => setSelectedPreview(fileUrl)} 
+                                            title="Visualizar Foto"
+                                            className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/40 text-white flex items-center justify-center transition-colors cursor-pointer"
+                                          >
+                                            <Eye className="w-4 h-4" />
+                                          </button>
+                                          <button 
+                                            type="button" 
+                                            onClick={() => removerArquivo(idx)} 
+                                            title="Remover Foto"
+                                            className="w-8 h-8 rounded-full bg-red-500/80 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer"
+                                          >
+                                            <Trash2 className="w-4 h-4" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                         </div>
+
+                         <button 
+                           onClick={enviarComprovacaoPoda} 
+                           disabled={isSendingComprovacao || arquivos.length === 0}
+                           className="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 text-white font-bold py-3 px-4 rounded-xl text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5 shadow-md mt-4 cursor-pointer"
+                         >
+                           {isSendingComprovacao ? (
+                             <>
+                               <Loader2 className="w-4.5 h-4.5 animate-spin" /> Enviando Comprovação...
+                             </>
+                           ) : (
+                             "Enviar Comprovação de Poda"
+                           )}
+                         </button>
+                    </div>
+                </div>
+            )}
 
             {/* Reanalysis Block (If status is Recusado) */}
             {solicitacao.status === 'Recusado' && (
@@ -332,34 +523,6 @@ function DetalheSolicitacaoContent() {
                               </div>
                               <p className="text-[10px] text-slate-500">Tire uma foto ou selecione do aparelho</p>
                             </div>
-
-                            {/* Hidden file inputs */}
-                            <input 
-                              id="input-galeria" 
-                              type="file" 
-                              accept="image/*" 
-                              multiple 
-                              className="hidden" 
-                              onChange={(e) => {
-                                if (e.target.files) {
-                                  adicionarArquivos(Array.from(e.target.files));
-                                }
-                                e.target.value = "";
-                              }} 
-                            />
-                            <input 
-                              id="input-camera" 
-                              type="file" 
-                              accept="image/*" 
-                              capture="environment" 
-                              className="hidden" 
-                              onChange={(e) => {
-                                if (e.target.files) {
-                                  adicionarArquivos(Array.from(e.target.files));
-                                }
-                                e.target.value = "";
-                              }} 
-                            />
 
                             {/* Selected Previews Grid */}
                             {arquivos.length > 0 && (
@@ -560,6 +723,157 @@ function DetalheSolicitacaoContent() {
                 </button>
                 
                 <div className="w-[72px]"></div> {/* spacer spacing */}
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Hidden file inputs available globally */}
+        <input 
+          id="input-galeria" 
+          type="file" 
+          accept="image/*" 
+          multiple 
+          className="hidden" 
+          onChange={(e) => {
+            if (e.target.files) {
+              adicionarArquivos(Array.from(e.target.files));
+            }
+            e.target.value = "";
+          }} 
+        />
+        <input 
+          id="input-camera" 
+          type="file" 
+          accept="image/*" 
+          capture="environment" 
+          className="hidden" 
+          onChange={(e) => {
+            if (e.target.files) {
+              adicionarArquivos(Array.from(e.target.files));
+            }
+            e.target.value = "";
+          }} 
+        />
+
+        {/* Modal: Certificado Ambiental */}
+        {showCertificateModal && (
+          <div className="fixed inset-0 bg-slate-950/80 z-55 flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl transition-all flex flex-col relative animate-fadeIn max-h-[90vh]">
+              {/* Close Button */}
+              <button 
+                type="button"
+                onClick={() => setShowCertificateModal(false)} 
+                className="absolute top-4 right-4 text-slate-450 hover:text-slate-750 p-1.5 rounded-lg hover:bg-slate-100 transition-all cursor-pointer z-10 print:hidden"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {/* Printable Certificate Area */}
+              <div id="print-certificate" className="p-8 sm:p-12 flex flex-col items-center justify-between text-center border-8 border-double border-emerald-700 m-4 rounded-2xl relative overflow-hidden bg-gradient-to-b from-stone-50 via-white to-stone-50 shadow-inner">
+                {/* Decorative Background Elements */}
+                <div className="absolute top-0 left-0 w-24 h-24 bg-emerald-50 rounded-br-full opacity-30 border-r border-b border-emerald-100"></div>
+                <div className="absolute bottom-0 right-0 w-24 h-24 bg-emerald-50 rounded-tl-full opacity-30 border-l border-t border-emerald-100"></div>
+                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/natural-paper.png')] opacity-10 pointer-events-none"></div>
+
+                <style dangerouslySetInnerHTML={{__html: `
+                  @media print {
+                    body * {
+                      visibility: hidden;
+                    }
+                    #print-certificate, #print-certificate * {
+                      visibility: visible;
+                    }
+                    #print-certificate {
+                      position: absolute;
+                      left: 0;
+                      top: 0;
+                      width: 100%;
+                      height: auto;
+                      border: 8px double #047857 !important;
+                      margin: 0 !important;
+                      box-shadow: none !important;
+                      background: white !important;
+                      padding: 3rem !important;
+                    }
+                  }
+                `}} />
+
+                {/* Header */}
+                <div className="space-y-2 flex flex-col items-center">
+                  <span className="text-4xl block">🌳</span>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-800">Prefeitura Municipal de São José do Rio Preto</p>
+                  <p className="text-[8px] font-bold uppercase tracking-wider text-slate-400">Secretaria Municipal de Meio Ambiente e Urbanismo</p>
+                </div>
+
+                {/* Main title */}
+                <div className="my-6">
+                  <h2 className="text-2xl sm:text-3xl font-serif font-black text-slate-800 tracking-tight">
+                    Certificado de Reconhecimento Ambiental
+                  </h2>
+                  <div className="w-32 h-0.5 bg-gradient-to-r from-transparent via-emerald-600 to-transparent mx-auto mt-2"></div>
+                </div>
+
+                {/* Body Content */}
+                <div className="space-y-4 max-w-lg">
+                  <p className="text-xs sm:text-sm text-slate-500 italic font-medium">
+                    A Secretaria Municipal de Meio Ambiente e Urbanismo confere o presente selo verde a
+                  </p>
+                  
+                  {/* Citizen Name */}
+                  <h3 className="text-xl sm:text-2xl font-black text-emerald-800 tracking-tight font-serif">
+                    {solicitacao.requesterName || user?.displayName || "Cidadão Consciente"}
+                  </h3>
+                  
+                  {/* Narrative paragraph */}
+                  <p className="text-xs sm:text-sm text-slate-650 leading-relaxed font-semibold px-4">
+                    Como reconhecimento por sua valiosa contribuição cidadã com a manutenção, arborização urbana e preservação do ecossistema local, tendo homologado e concluído com sucesso a poda/supressão ambiental no endereço:
+                  </p>
+                  
+                  {/* Address */}
+                  <p className="text-xs font-black text-slate-800 bg-slate-100 py-2 px-4 rounded-xl border border-slate-200 inline-block max-w-md">
+                    📍 {solicitacao.address}
+                  </p>
+                  
+                  {/* Protocol and Date */}
+                  <p className="text-[10px] text-slate-450 font-bold uppercase tracking-wider">
+                    Protocolo: #{/^\d{14}$/.test(solicitacao.id) ? solicitacao.id : solicitacao.id.substring(0, 8)} • Concluído em {solicitacao.dataFinalizacao || new Date().toLocaleDateString('pt-BR')}
+                  </p>
+                </div>
+
+                {/* Seal / Footer Signature Area */}
+                <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-6 w-full max-w-md pt-4 border-t border-slate-100">
+                  <div className="flex flex-col items-center">
+                    <div className="w-14 h-14 bg-amber-50 rounded-full border-4 border-double border-amber-500 flex items-center justify-center text-amber-600 shadow-md">
+                      <span className="text-2xl">🏅</span>
+                    </div>
+                    <span className="text-[8px] font-black text-amber-700 uppercase tracking-widest mt-1">Selo Verde Cidadão</span>
+                  </div>
+
+                  <div className="text-center">
+                    <div className="w-40 border-b border-slate-300 mx-auto mt-4"></div>
+                    <p className="text-[10px] font-bold text-slate-700 mt-1">Secretaria Municipal de Meio Ambiente</p>
+                    <p className="text-[8px] text-slate-400 font-medium">Gestão de Arborização Urbana</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions Footer */}
+              <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row gap-3 justify-end print:hidden">
+                <button 
+                  type="button" 
+                  onClick={() => setShowCertificateModal(false)}
+                  className="py-2.5 px-5 bg-slate-100 hover:bg-slate-250 text-slate-600 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer text-center"
+                >
+                  Fechar
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => window.print()}
+                  className="py-2.5 px-5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl font-bold text-xs sm:text-sm transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <span>🖨️ Imprimir ou Salvar PDF</span>
+                </button>
               </div>
             </div>
           </div>

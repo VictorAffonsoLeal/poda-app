@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { collection, addDoc, updateDoc, doc, getDocs, query, where, arrayUnion, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, updateDoc, doc, getDocs, query, where, arrayUnion, serverTimestamp, setDoc, orderBy, limit, documentId } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/context/AuthContext";
 
@@ -41,9 +41,17 @@ export default function NovaSolicitacaoPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { showToast } = useToast();
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [duplicateInfo, setDuplicateInfo] = useState<{ id: string, status: string, address: string } | null>(null);
 
   const [selectedPreview, setSelectedPreview] = useState<string | null>(null);
   const [showPickerModal, setShowPickerModal] = useState(false);
+
+  const [qtdPruning, setQtdPruning] = useState(1);
+  const [qtdSuppression, setQtdSuppression] = useState(0);
+  const [documentoCaracterizacao, setDocumentoCaracterizacao] = useState<File | null>(null);
+  const [arvoreNaDivisa, setArvoreNaDivisa] = useState(false);
+  const [documentoVizinho, setDocumentoVizinho] = useState<File | null>(null);
+  const [localReposicao, setLocalReposicao] = useState("");
 
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -263,10 +271,25 @@ export default function NovaSolicitacaoPage() {
       return;
     }
 
+    if (arvoreNaDivisa && !documentoVizinho) {
+      showToast("Anexe o documento de anuência do vizinho.", "warning");
+      return;
+    }
+
+    if (arvoreNaDivisa && !localReposicao) {
+      showToast("Selecione onde ocorrerá a reposição da árvore.", "warning");
+      return;
+    }
+
+    if (tipoServico === "Solicitação de Supressão (Corte)" && qtdSuppression > 15 && !documentoCaracterizacao) {
+      showToast("Para solicitações de supressão com mais de 15 árvores, é obrigatório anexar o Laudo de Caracterização Ambiental.", "warning");
+      return;
+    }
+
     setShowConfirmModal(true);
   };
 
-  const enviarSolicitacao = async () => {
+  const enviarSolicitacao = async (bypassDuplicity = false) => {
     if (!user) {
       showToast("Você precisa estar logado para enviar uma solicitação.", "error");
       return;
@@ -296,23 +319,48 @@ export default function NovaSolicitacaoPage() {
       showToast("Anexe o documento de autorização assinado pelo proprietário.", "warning");
       return;
     }
+
+    if (arvoreNaDivisa && !documentoVizinho) {
+      showToast("Anexe o documento de anuência do vizinho.", "warning");
+      return;
+    }
+
+    if (arvoreNaDivisa && !localReposicao) {
+      showToast("Selecione onde ocorrerá a reposição da árvore.", "warning");
+      return;
+    }
+
+    if (tipoServico === "Solicitação de Supressão (Corte)" && qtdSuppression > 15 && !documentoCaracterizacao) {
+      showToast("Para solicitações de supressão com mais de 15 árvores, é obrigatório anexar o Laudo de Caracterização Ambiental.", "warning");
+      return;
+    }
     
     setIsLoading(true);
 
     try {
       const fullAddress = `${formData.logradouro}, ${formData.numero} - ${formData.bairro}`;
 
-      // CHECAGEM DE DUPLICIDADE
-      let duplicateQuery;
-      if (treeId) {
-        duplicateQuery = query(collection(db, "solicitacoes"), where("treeId", "==", treeId), where("status", "in", ["Criado", "Em Análise", "Aprovado"]));
-      } else {
-        duplicateQuery = query(collection(db, "solicitacoes"), where("address", "==", fullAddress), where("status", "in", ["Criado", "Em Análise", "Aprovado"]));
+      // 1. CHECAGEM DE DUPLICIDADE ANTES DO UPLOAD
+      if (!bypassDuplicity) {
+        let duplicateQuery;
+        if (treeId) {
+          duplicateQuery = query(collection(db, "solicitacoes"), where("treeId", "==", treeId), where("status", "in", ["Criado", "Em Análise", "Aprovado"]));
+        } else {
+          duplicateQuery = query(collection(db, "solicitacoes"), where("address", "==", fullAddress), where("status", "in", ["Criado", "Em Análise", "Aprovado"]));
+        }
+
+        const duplicateSnapshot = await getDocs(duplicateQuery);
+        if (!duplicateSnapshot.empty) {
+          // Encontrou duplicidade! Mostra o modal de escolha.
+          const existingDoc = duplicateSnapshot.docs[0];
+          setDuplicateInfo({ id: existingDoc.id, status: existingDoc.data().status, address: fullAddress });
+          setIsLoading(false);
+          setShowConfirmModal(false); // fecha o modal de revisão
+          return;
+        }
       }
 
-      const duplicateSnapshot = await getDocs(duplicateQuery);
-
-      // Upload das fotos para a Hostinger via PHP
+      // 2. REALIZAR UPLOAD DAS IMAGENS E DOCUMENTOS
       const urls: string[] = [];
       if (arquivos.length > 0) {
         const formDataUpload = new FormData();
@@ -340,7 +388,6 @@ export default function NovaSolicitacaoPage() {
         }
       }
 
-      // Upload do documento de anuência para a Hostinger via PHP
       let urlDocumentoAnuencia: string | null = null;
       if (documentoAnuencia) {
         const formDataDoc = new FormData();
@@ -371,32 +418,62 @@ export default function NovaSolicitacaoPage() {
         }
       }
 
-      if (!duplicateSnapshot.empty) {
-        // ENCONTROU DUPLICIDADE
-        const existingDoc = duplicateSnapshot.docs[0];
-        const existingId = existingDoc.id;
-
-        const reforcoEntry = {
-          data: new Date().toLocaleDateString('pt-BR'),
-          status: existingDoc.data().status,
-          descricao: `[REFORÇO] Novo pedido registrado para esta árvore. Motivos: ${justificativaFinal}`
-        };
-
-        const updatePayload: any = {
-          historico: arrayUnion(reforcoEntry),
-          solicitantesAdicionais: arrayUnion(user.uid)
-        };
-
-        if (urls.length > 0) {
-          updatePayload.fotos = arrayUnion(...urls);
+      let urlDocumentoVizinho: string | null = null;
+      if (arvoreNaDivisa && documentoVizinho) {
+        const formDataDoc = new FormData();
+        formDataDoc.append("userId", user.uid);
+        formDataDoc.append("files[]", documentoVizinho);
+        try {
+          const resDoc = await fetch(getUploadUrl(), {
+            method: "POST",
+            body: formDataDoc,
+          });
+          const dataDoc = await resDoc.json();
+          if (dataDoc.urls && dataDoc.urls.length > 0) {
+            urlDocumentoVizinho = dataDoc.urls[0];
+          } else {
+            const errorMsg = dataDoc.errors && dataDoc.errors.length > 0 
+              ? dataDoc.errors.join(", ") 
+              : "Erro no upload do documento do vizinho.";
+            showToast("Erro ao salvar o documento do vizinho: " + errorMsg, "error");
+            setIsLoading(false);
+            return;
+          }
+        } catch (error) {
+          console.error("Erro no upload do vizinho:", error);
+          showToast("Erro ao enviar o documento de anuência do vizinho.", "error");
+          setIsLoading(false);
+          return;
         }
+      }
 
-        await updateDoc(doc(db, "solicitacoes", existingId), updatePayload);
-        
-        showToast(`Identificamos que já existe um chamado em andamento para esta árvore (Protocolo #${existingId}). Sua justificativa e fotos foram anexadas ao processo principal como um REFORÇO para dar mais peso ao pedido!`, "info", 8000);
-        setShowConfirmModal(false);
-        router.push("/solicitacoes");
-        return;
+      let urlDocumentoCaracterizacao: string | null = null;
+      if (tipoServico === "Solicitação de Supressão (Corte)" && qtdSuppression > 15 && documentoCaracterizacao) {
+        const formDataDoc = new FormData();
+        formDataDoc.append("userId", user.uid);
+        formDataDoc.append("files[]", documentoCaracterizacao);
+        try {
+          const resDoc = await fetch(getUploadUrl(), {
+            method: "POST",
+            body: formDataDoc,
+          });
+          const dataDoc = await resDoc.json();
+          if (dataDoc.urls && dataDoc.urls.length > 0) {
+            urlDocumentoCaracterizacao = dataDoc.urls[0];
+          } else {
+            const errorMsg = dataDoc.errors && dataDoc.errors.length > 0 
+              ? dataDoc.errors.join(", ") 
+              : "Erro no upload do laudo de caracterização.";
+            showToast("Erro ao salvar o laudo de caracterização: " + errorMsg, "error");
+            setIsLoading(false);
+            return;
+          }
+        } catch (error) {
+          console.error("Erro no upload do laudo de caracterização:", error);
+          showToast("Erro ao enviar o laudo de caracterização ambiental.", "error");
+          setIsLoading(false);
+          return;
+        }
       }
 
       // Geocoding fallback Nominatim
@@ -425,6 +502,12 @@ export default function NovaSolicitacaoPage() {
         anuenciaProprietario: imovelAlugado ? anuenciaProprietario : null,
         documentoAnuencia: urlDocumentoAnuencia,
         cienteCompensacao: tipoServico === "Solicitação de Supressão (Corte)" ? cienteCompensacao : null,
+        qtdPodaSolicitada: tipoServico === "Solicitação de Poda de Árvore" ? qtdPruning : 0,
+        qtdSupressaoSolicitada: tipoServico === "Solicitação de Supressão (Corte)" ? qtdSuppression : 0,
+        arvoreNaDivisa,
+        documentoVizinho: urlDocumentoVizinho,
+        localReposicao: localReposicao || null,
+        documentoCaracterizacao: urlDocumentoCaracterizacao,
         geolocalizacao: finalGeo,
         fotos: urls,
         status: 'Criado',
@@ -437,14 +520,111 @@ export default function NovaSolicitacaoPage() {
           }
         ]
       };
+
+      // Gerar Protocolo ID Sequencial aaaammxxxxxxxx
+      const agora = new Date();
+      const ano = agora.getFullYear();
+      const mes = String(agora.getMonth() + 1).padStart(2, "0");
+      const prefixo = `${ano}${mes}`;
       
-      const docRef = await addDoc(collection(db, "solicitacoes"), solicitacaoData);
-      showToast(`Solicitação enviada com sucesso! Protocolo: #${docRef.id}`, "success");
+      const startRange = `${ano}0000000000`;
+      const endRange = `${ano}9999999999`;
+
+      const q = query(
+        collection(db, "solicitacoes"),
+        where(documentId(), ">=", startRange),
+        where(documentId(), "<=", endRange),
+        orderBy(documentId(), "desc"),
+        limit(1)
+      );
+
+      const querySnapshot = await getDocs(q);
+      let proximoNumero = 1;
+      if (!querySnapshot.empty) {
+        const ultimoId = querySnapshot.docs[0].id;
+        const sequenciaStr = ultimoId.substring(6);
+        const ultimaSequencia = parseInt(sequenciaStr, 10);
+        if (!isNaN(ultimaSequencia)) {
+          proximoNumero = ultimaSequencia + 1;
+        }
+      }
+
+      const sequenciaFormatada = String(proximoNumero).padStart(8, "0");
+      const novoProtocoloId = `${prefixo}${sequenciaFormatada}`;
+
+      const docRef = doc(db, "solicitacoes", novoProtocoloId);
+      await setDoc(docRef, solicitacaoData);
+
+      showToast(`Solicitação enviada com sucesso! Protocolo: #${novoProtocoloId}`, "success");
       setShowConfirmModal(false);
       router.push("/solicitacoes");
     } catch (e) {
       console.error("Erro ao salvar no Firestore: ", e);
       showToast('Erro ao enviar a solicitação. Tente novamente.', "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const confirmarReforcoExistente = async () => {
+    if (!duplicateInfo || !user) {
+      showToast("Você precisa estar logado para realizar esta ação.", "error");
+      return;
+    }
+    setIsLoading(true);
+
+    try {
+      let justificativaFinal = motivosSelecionados.join(", ");
+      if (motivosSelecionados.includes("Outros") && justificativaOutros) {
+          justificativaFinal = justificativaFinal ? `${justificativaFinal}, Outros: ${justificativaOutros}` : `Outros: ${justificativaOutros}`;
+      }
+
+      // Upload das fotos
+      const urls: string[] = [];
+      if (arquivos.length > 0) {
+        const formDataUpload = new FormData();
+        formDataUpload.append("userId", user.uid);
+        arquivos.forEach((arquivo) => {
+          formDataUpload.append("files[]", arquivo);
+        });
+
+        try {
+          const resUpload = await fetch(getUploadUrl(), {
+            method: "POST",
+            body: formDataUpload,
+          });
+          const dataUpload = await resUpload.json();
+          if (dataUpload.urls) {
+            urls.push(...dataUpload.urls);
+          }
+        } catch (error) {
+          console.error("Erro no upload das imagens para o reforço:", error);
+        }
+      }
+
+      const reforcoEntry = {
+        data: new Date().toLocaleDateString('pt-BR'),
+        status: duplicateInfo.status,
+        descricao: `[REFORÇO] Novo pedido registrado para esta árvore. Motivos: ${justificativaFinal}`
+      };
+
+      const updatePayload: any = {
+        historico: arrayUnion(reforcoEntry),
+        solicitantesAdicionais: arrayUnion(user.uid)
+      };
+
+      if (urls.length > 0) {
+        updatePayload.fotos = arrayUnion(...urls);
+      }
+
+      await updateDoc(doc(db, "solicitacoes", duplicateInfo.id), updatePayload);
+      
+      showToast(`Identificamos o chamado existente (Protocolo #${duplicateInfo.id}). Sua justificativa e fotos foram vinculadas como REFORÇO para dar mais peso ao pedido!`, "success", 8000);
+      setDuplicateInfo(null);
+      router.push("/solicitacoes");
+    } catch (e) {
+      console.error("Erro ao reforçar chamado:", e);
+      showToast("Erro ao processar reforço. Tente novamente.", "error");
     } finally {
       setIsLoading(false);
     }
@@ -488,6 +668,87 @@ export default function NovaSolicitacaoPage() {
                     </select>
                 </div>
             </div>
+
+            {(tipoServico === "Solicitação de Poda de Árvore" || tipoServico === "Solicitação de Supressão (Corte)") && (
+              <div className="grid grid-cols-1 gap-6 animate-fadeIn">
+                {tipoServico === "Solicitação de Poda de Árvore" && (
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-slate-100 pb-2 mb-4">Quantidade de Árvores para Poda</h3>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      value={qtdPruning} 
+                      onChange={e => setQtdPruning(Math.max(1, parseInt(e.target.value) || 1))}
+                      className={inputClass}
+                    />
+                  </div>
+                )}
+                {tipoServico === "Solicitação de Supressão (Corte)" && (
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider border-b border-slate-100 pb-2 mb-4">Quantidade de Árvores para Supressão (Corte)</h3>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      value={qtdSuppression} 
+                      onChange={e => setQtdSuppression(Math.max(1, parseInt(e.target.value) || 1))}
+                      className={inputClass}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {tipoServico === "Solicitação de Supressão (Corte)" && qtdSuppression > 15 && (
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl space-y-3">
+                <div className="flex gap-2">
+                  <span className="text-amber-600 text-lg">📄</span>
+                  <div>
+                    <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider">Laudo de Caracterização Ambiental Obrigatório <span className="text-red-500">*</span></h4>
+                    <p className="text-[10px] text-amber-700 font-semibold leading-relaxed mt-0.5">
+                      Como o número de supressões é superior a 15 árvores, é obrigatória a apresentação do Laudo de Caracterização Ambiental assinado por responsável técnico habilitado.
+                    </p>
+                  </div>
+                </div>
+
+                {documentoCaracterizacao ? (
+                  <div className="flex items-center justify-between bg-emerald-50 border border-emerald-250 rounded-xl px-4 py-2.5">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <span className="text-emerald-600 text-sm">✅</span>
+                      <span className="text-xs font-bold text-emerald-800 truncate max-w-xs">{documentoCaracterizacao.name}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDocumentoCaracterizacao(null)}
+                      className="text-xs text-red-500 hover:text-red-700 font-bold whitespace-nowrap cursor-pointer ml-3"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                ) : (
+                  <label
+                    htmlFor="input-caracterizacao"
+                    className="flex flex-col items-center justify-center w-full px-4 py-5 border-2 border-dashed border-amber-300 hover:border-emerald-500 hover:bg-emerald-50/20 rounded-2xl cursor-pointer transition-all text-center group"
+                  >
+                    <span className="text-xl mb-1">📎</span>
+                    <span className="text-xs font-bold text-slate-600">Selecionar laudo de caracterização</span>
+                    <span className="text-[9px] text-slate-400 mt-0.5">PDF ou imagens de até 10MB</span>
+                    <input
+                      id="input-caracterizacao"
+                      type="file"
+                      accept="image/*,application/pdf"
+                      className="hidden"
+                      onChange={e => {
+                        if (e.target.files && e.target.files[0]) {
+                          setDocumentoCaracterizacao(e.target.files[0]);
+                          showToast("Laudo de Caracterização Ambiental anexado!", "success");
+                        }
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
 
             {tipoArea === "APP / Rural" && (
               <div className="bg-red-50 border border-red-200 p-4 rounded-2xl flex gap-3 text-red-800">
@@ -638,6 +899,84 @@ export default function NovaSolicitacaoPage() {
 
                 <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
                   <div className="flex items-center gap-2">
+                    <input type="checkbox" id="check-divisa" checked={arvoreNaDivisa} onChange={e => setArvoreNaDivisa(e.target.checked)} className="w-4.5 h-4.5 text-emerald-600 rounded-md border-slate-300 focus:ring-emerald-500/20 focus:ring-1 cursor-pointer shrink-0" />
+                    <label htmlFor="check-divisa" className="text-xs sm:text-sm text-slate-700 font-bold cursor-pointer select-none">A árvore está localizada na divisa com o imóvel vizinho?</label>
+                  </div>
+
+                  {arvoreNaDivisa && (
+                    <div className="pl-6 pt-3 border-t border-slate-200 mt-2 space-y-4 animate-fadeIn">
+                      <div className="flex items-start gap-3">
+                        <p className="text-xs text-slate-650 font-medium leading-relaxed">
+                          Árvores localizadas em limites de divisa exigem a <strong>anuência do vizinho lindeiro</strong> bem como um <strong>comum acordo</strong> formalizando em qual imóvel será realizada a reposição florestal caso o corte seja autorizado.
+                        </p>
+                      </div>
+
+                      {/* Upload do Vizinho */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-650 uppercase mb-1">
+                          Anexar Anuência do Vizinho <span className="text-red-500">*</span>
+                        </label>
+                        {documentoVizinho ? (
+                          <div className="flex items-center justify-between bg-emerald-50 border border-emerald-250 rounded-xl px-4 py-2.5">
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <span className="text-emerald-600 text-sm">✅</span>
+                              <span className="text-xs font-bold text-emerald-850 truncate max-w-xs">{documentoVizinho.name}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setDocumentoVizinho(null)}
+                              className="text-xs text-red-500 hover:text-red-700 font-bold whitespace-nowrap cursor-pointer ml-3"
+                            >
+                              Remover
+                            </button>
+                          </div>
+                        ) : (
+                          <label
+                            htmlFor="input-documento-vizinho"
+                            className="flex flex-col items-center justify-center w-full px-4 py-5 border-2 border-dashed border-amber-300 hover:border-emerald-500 hover:bg-emerald-50/20 rounded-2xl cursor-pointer transition-all text-center group"
+                          >
+                            <span className="text-xl mb-1">📎</span>
+                            <span className="text-xs font-bold text-slate-600">Selecionar anuência do vizinho</span>
+                            <span className="text-[9px] text-slate-400 mt-0.5">JPG, PNG ou PDF de até 10MB</span>
+                            <input
+                              id="input-documento-vizinho"
+                              type="file"
+                              accept="image/*,application/pdf"
+                              className="hidden"
+                              onChange={e => {
+                                if (e.target.files && e.target.files[0]) {
+                                  setDocumentoVizinho(e.target.files[0]);
+                                  showToast("Documento de anuência do vizinho anexado!", "success");
+                                }
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
+
+                      {/* Reposição da árvore */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-650 uppercase mb-1">
+                          Local em que ocorrerá a reposição da árvore <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          value={localReposicao}
+                          onChange={e => setLocalReposicao(e.target.value)}
+                          className={selectClass}
+                        >
+                          <option value="">-- Selecione o local acordado --</option>
+                          <option value="Meu Imóvel">No meu imóvel</option>
+                          <option value="Imóvel do Vizinho">No imóvel do vizinho</option>
+                          <option value="Em comum acordo / Outro local">Em comum acordo / Outro local</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
+                  <div className="flex items-center gap-2">
                     <input type="checkbox" id="check-alugado" checked={imovelAlugado} onChange={e => setImovelAlugado(e.target.checked)} className="w-4.5 h-4.5 text-emerald-600 rounded-md border-slate-300 focus:ring-emerald-500/20 focus:ring-1 cursor-pointer shrink-0" />
                     <label htmlFor="check-alugado" className="text-xs sm:text-sm text-slate-700 font-bold cursor-pointer select-none">O imóvel relacionado ao serviço é alugado?</label>
                   </div>
@@ -647,7 +986,7 @@ export default function NovaSolicitacaoPage() {
                       <div className="flex items-start gap-3">
                         <input type="checkbox" id="check-anuencia" checked={anuenciaProprietario} onChange={e => setAnuenciaProprietario(e.target.checked)} className="mt-1 w-5 h-5 text-emerald-600 rounded-md border-slate-300 focus:ring-emerald-500/20 focus:ring-1 cursor-pointer shrink-0" />
                         <label htmlFor="check-anuencia" className="text-xs sm:text-sm text-slate-750 font-semibold cursor-pointer select-none leading-relaxed">
-                          Declaro ter a <strong>autorização assinada pelo proprietário</strong> para efetuar este pedido de intervenção na árvore.
+                          Declaro ter a <strong>autorização assinada pelo proprietário</strong> (ou o <strong>contrato de locação da imobiliária</strong>, caso não tenha contato direto com o dono) para efetuar este pedido de intervenção na árvore.
                         </label>
                       </div>
 
@@ -671,8 +1010,17 @@ Assinatura do Proprietário`}</div>
                           {/* Upload do arquivo */}
                           <div>
                             <label className="block text-xs font-bold text-slate-650 uppercase mb-1">
-                              Anexar documento de anuência <span className="text-red-500">*</span>
+                              Anexar documento de anuência ou contrato de locação <span className="text-red-500">*</span>
                             </label>
+                            <div className="bg-blue-50 border border-blue-200/80 rounded-xl p-3.5 flex items-start gap-2.5 shadow-sm text-xs text-blue-900 font-semibold mb-3">
+                              <span className="text-base text-blue-600 shrink-0">💡</span>
+                              <div className="space-y-0.5">
+                                <p className="font-extrabold text-blue-950">Sem contato direto com o proprietário?</p>
+                                <p className="text-[11px] leading-relaxed text-blue-800">
+                                  Se você não tiver contato direto com o dono do imóvel, poderá anexar uma cópia do seu <strong>Contrato de Locação emitido pela Imobiliária</strong> para substituir a Carta de Anuência.
+                                </p>
+                              </div>
+                            </div>
                             {documentoAnuencia ? (
                               <div className="flex items-center justify-between bg-emerald-50 border border-emerald-250 rounded-xl px-4 py-2.5">
                                 <div className="flex items-center gap-2 overflow-hidden">
@@ -998,6 +1346,24 @@ Assinatura do Proprietário`}</div>
                   </div>
                 </div>
 
+                {/* Quantidades de Árvores */}
+                {(tipoServico === "Solicitação de Poda de Árvore" || tipoServico === "Solicitação de Supressão (Corte)") && (
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    {tipoServico === "Solicitação de Poda de Árvore" && (
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Árvores para Poda</span>
+                        <span className="font-bold text-slate-800 leading-tight">{qtdPruning}</span>
+                      </div>
+                    )}
+                    {tipoServico === "Solicitação de Supressão (Corte)" && (
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Árvores para Supressão</span>
+                        <span className="font-bold text-slate-800 leading-tight">{qtdSuppression}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Endereço */}
                 <div className="space-y-2">
                   <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider border-b border-slate-100 pb-1 flex items-center gap-1.5">
@@ -1072,11 +1438,47 @@ Assinatura do Proprietário`}</div>
                       <div className="flex items-center gap-2">
                         <span className="text-base">📄</span>
                         <span className="font-semibold text-slate-700">
-                          Imóvel Alugado — Autorização do proprietário:{" "}
+                          Imóvel Alugado — Autorização ou Contrato:{" "}
                           {documentoAnuencia ? (
-                            <span className="text-emerald-700 font-bold">Anexada ({documentoAnuencia.name})</span>
+                            <span className="text-emerald-700 font-bold">Anexado ({documentoAnuencia.name})</span>
                           ) : (
-                            <span className="text-red-600 font-bold">Não anexada</span>
+                            <span className="text-red-650 font-bold">Não anexado</span>
+                          )}
+                        </span>
+                      </div>
+                    )}
+
+                    {arvoreNaDivisa && (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🤝</span>
+                          <span className="font-semibold text-slate-700">
+                            Árvore na Divisa — Anuência do Vizinho:{" "}
+                            {documentoVizinho ? (
+                              <span className="text-emerald-700 font-bold">Anexada ({documentoVizinho.name})</span>
+                            ) : (
+                              <span className="text-red-650 font-bold">Não anexada</span>
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">📍</span>
+                          <span className="font-semibold text-slate-700">
+                            Reposição da Árvore: <span className="font-bold text-slate-800">{localReposicao}</span>
+                          </span>
+                        </div>
+                      </>
+                    )}
+
+                    {qtdSuppression > 15 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">📜</span>
+                        <span className="font-semibold text-slate-700">
+                          Laudo de Caracterização Ambiental:{" "}
+                          {documentoCaracterizacao ? (
+                            <span className="text-emerald-700 font-bold">Anexado ({documentoCaracterizacao.name})</span>
+                          ) : (
+                            <span className="text-red-650 font-bold">Não anexado</span>
                           )}
                         </span>
                       </div>
@@ -1120,7 +1522,7 @@ Assinatura do Proprietário`}</div>
                 </button>
                 <button
                   type="button"
-                  onClick={enviarSolicitacao}
+                  onClick={() => enviarSolicitacao()}
                   disabled={isLoading}
                   className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold rounded-xl text-xs sm:text-sm transition-all shadow-md cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                 >
@@ -1130,6 +1532,71 @@ Assinatura do Proprietário`}</div>
                     </>
                   ) : (
                     "Confirmar e Enviar"
+                  )}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Chamado Duplicado / Seleção de Árvore */}
+        {duplicateInfo && (
+          <div className="fixed inset-0 bg-slate-900/60 z-55 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn font-sans">
+            <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl flex flex-col border border-slate-200 p-6 space-y-6 animate-scaleIn">
+              
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl border border-amber-100 shrink-0">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div className="space-y-1.5">
+                  <h3 className="text-base font-black text-slate-800">Chamado em Andamento Encontrado</h3>
+                  <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                    Identificamos que já existe um chamado ativo para o endereço <strong>{duplicateInfo.address}</strong> (Protocolo: #{duplicateInfo.id}).
+                  </p>
+                  <div className="text-xs text-slate-650 leading-relaxed font-medium bg-slate-50 border border-slate-200/65 p-3.5 rounded-2xl space-y-2">
+                    <p className="font-bold text-slate-700">Para otimizar o atendimento de arborização, você pode escolher:</p>
+                    <p>
+                      <span className="font-extrabold text-emerald-700 block">🌳 É a Mesma Árvore (Apoiar):</span>
+                      Seu pedido será somado como um <strong>Reforço</strong> ao protocolo existente. Suas fotos e justificativa darão mais urgência ao chamado original sem criar processos redundantes.
+                    </p>
+                    <p>
+                      <span className="font-extrabold text-blue-700 block">🌿 É Outra Árvore (Novo Chamado):</span>
+                      Se o pedido for para <strong>outra árvore diferente</strong> no mesmo terreno ou calçada. Um novo protocolo sequencial será criado.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDuplicateInfo(null)}
+                  disabled={isLoading}
+                  className="px-4 py-2.5 border border-slate-200 text-slate-500 hover:bg-slate-100 text-xs font-bold rounded-xl transition-all cursor-pointer disabled:opacity-50 text-center"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => enviarSolicitacao(true)}
+                  disabled={isLoading}
+                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50 text-center"
+                >
+                  É Outra Árvore
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmarReforcoExistente}
+                  disabled={isLoading}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50 text-center flex items-center justify-center gap-1.5"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Enviando...
+                    </>
+                  ) : (
+                    "É a Mesma Árvore"
                   )}
                 </button>
               </div>

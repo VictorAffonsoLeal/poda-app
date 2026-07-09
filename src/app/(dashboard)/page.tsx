@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { 
   Trees, 
   FileText, 
@@ -14,7 +14,8 @@ import {
   LogOut, 
   Bell, 
   ChevronRight,
-  PlusCircle
+  PlusCircle,
+  X
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -22,6 +23,20 @@ export default function DashboardPage() {
   const { user, userData, loading } = useAuth();
   
   const nomeUsuario = userData?.nome ? userData.nome.split(" ")[0] : "Cidadão";
+
+  const [showTutorial, setShowTutorial] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const dismissed = localStorage.getItem("dismissedTutorial") === "true";
+      setShowTutorial(!dismissed);
+    }
+  }, []);
+
+  const handleDismissTutorial = () => {
+    setShowTutorial(false);
+    localStorage.setItem("dismissedTutorial", "true");
+  };
 
   useEffect(() => {
     if (!loading && !user) {
@@ -74,6 +89,14 @@ export default function DashboardPage() {
       accentColor: "hover:border-amber-200 hover:bg-amber-50/10"
     },
     {
+      title: "Denúncia",
+      description: "Relate podas irregulares, corte indevido ou árvores em situação de risco.",
+      path: "/denuncia",
+      icon: <span className="text-3xl">🚨</span>,
+      bgIcon: "bg-rose-50 border border-rose-100/50 shadow-inner",
+      accentColor: "hover:border-rose-250 hover:bg-rose-50/10"
+    },
+    {
       title: "Legislação e Penalização",
       description: "Aprenda as regras da prefeitura e saiba como evitar multas.",
       path: "/orientacoes",
@@ -88,6 +111,22 @@ export default function DashboardPage() {
       icon: <span className="text-3xl">👤</span>,
       bgIcon: "bg-teal-50 border border-teal-105 shadow-inner",
       accentColor: "hover:border-teal-200 hover:bg-teal-50/10"
+    },
+    {
+      title: "Como Funciona?",
+      description: "Guia passo a passo detalhando todas as funções e etapas do aplicativo.",
+      path: "/como-funciona",
+      icon: <span className="text-3xl">💡</span>,
+      bgIcon: "bg-cyan-50 border border-cyan-105 shadow-inner",
+      accentColor: "hover:border-cyan-200 hover:bg-cyan-50/10"
+    },
+    {
+      title: "Feedbacks e Sugestões",
+      description: "Envie críticas, sugestões, elogios ou relate falhas no portal.",
+      path: "/feedback",
+      icon: <span className="text-3xl">💬</span>,
+      bgIcon: "bg-orange-50 border border-orange-105 shadow-inner",
+      accentColor: "hover:border-orange-200 hover:bg-orange-50/10"
     }
   ];
 
@@ -112,6 +151,19 @@ export default function DashboardPage() {
             </div>
             
             <div className="flex items-center gap-3 relative z-10">
+              {!showTutorial && (
+                <button 
+                  onClick={() => {
+                    setShowTutorial(true);
+                    localStorage.setItem("dismissedTutorial", "false");
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/30 text-white text-xs font-bold transition-all border border-white/10 hover:border-white/20 cursor-pointer"
+                  title="Como funciona o aplicativo"
+                >
+                  <BookOpen className="w-4 h-4" /> <span className="hidden sm:inline">Como Funciona?</span>
+                </button>
+              )}
+
               {/* Notifications Button */}
               <button 
                 onClick={() => router.push("/notificacoes")}
@@ -130,6 +182,103 @@ export default function DashboardPage() {
               </button>
             </div>
         </header>
+
+        {showTutorial && (
+          <div className="w-full bg-white border border-emerald-100 rounded-2xl p-6 shadow-sm mb-8 relative overflow-hidden transition-all duration-300 hover:shadow-md animate-fadeIn">
+            {/* Top decorative gradient bar */}
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-500 to-teal-500"></div>
+            
+            {/* Header */}
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2.5">
+                <div className="bg-emerald-50 text-emerald-600 p-2 rounded-xl border border-emerald-100/50">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-slate-800 tracking-tight">
+                    Como funciona o Poda Digital?
+                  </h2>
+                  <p className="text-xs text-slate-400 font-semibold">Siga o passo a passo para solicitar serviços ou fazer denúncias com segurança.</p>
+                </div>
+              </div>
+              <button 
+                onClick={handleDismissTutorial}
+                className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-450 hover:text-slate-750 transition-all cursor-pointer"
+                title="Fechar tutorial"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Steps Container */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 relative">
+              
+              {/* Step 1 */}
+              <div className="flex gap-3 relative z-10 group">
+                <div className="flex flex-col items-center shrink-0">
+                  <span className="w-7 h-7 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-black text-xs flex items-center justify-center shadow-inner group-hover:bg-emerald-600 group-hover:text-white group-hover:border-emerald-600 transition-all duration-200">
+                    1
+                  </span>
+                  <div className="w-0.5 h-full bg-slate-100 hidden sm:block sm:h-12 mt-2"></div>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-extrabold text-slate-700 group-hover:text-slate-900 transition-colors">1. Pedir ou Denunciar</h4>
+                  <p className="text-[11px] text-slate-500 leading-relaxed font-semibold">
+                    Use <strong>"Nova Solicitação"</strong> para poda/supressão particular, ou <strong>"Denúncia"</strong> para infrações ambientais.
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 2 */}
+              <div className="flex gap-3 relative z-10 group">
+                <div className="flex flex-col items-center shrink-0">
+                  <span className="w-7 h-7 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-black text-xs flex items-center justify-center shadow-inner group-hover:bg-emerald-600 group-hover:text-white group-hover:border-emerald-600 transition-all duration-200">
+                    2
+                  </span>
+                  <div className="w-0.5 h-full bg-slate-100 hidden sm:block sm:h-12 mt-2"></div>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-extrabold text-slate-700 group-hover:text-slate-900 transition-colors">2. Vistoria Técnica</h4>
+                  <p className="text-[11px] text-slate-500 leading-relaxed font-semibold">
+                    Um engenheiro da prefeitura irá ao local avaliar a árvore e emitirá o Laudo de Autorização ou Recusa.
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 3 */}
+              <div className="flex gap-3 relative z-10 group">
+                <div className="flex flex-col items-center shrink-0">
+                  <span className="w-7 h-7 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-black text-xs flex items-center justify-center shadow-inner group-hover:bg-emerald-600 group-hover:text-white group-hover:border-emerald-600 transition-all duration-200">
+                    3
+                  </span>
+                  <div className="w-0.5 h-full bg-slate-100 hidden sm:block sm:h-12 mt-2"></div>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-extrabold text-slate-700 group-hover:text-slate-900 transition-colors">3. Executar o Serviço</h4>
+                  <p className="text-[11px] text-slate-500 leading-relaxed font-semibold">
+                    Se autorizado, contrate um profissional credenciado em <strong>"Podadores Autorizados"</strong> para realizar o serviço com segurança.
+                  </p>
+                </div>
+              </div>
+
+              {/* Step 4 */}
+              <div className="flex gap-3 relative z-10 group">
+                <div className="flex flex-col items-center shrink-0">
+                  <span className="w-7 h-7 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-black text-xs flex items-center justify-center shadow-inner group-hover:bg-emerald-600 group-hover:text-white group-hover:border-emerald-600 transition-all duration-200">
+                    4
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-extrabold text-slate-700 group-hover:text-slate-900 transition-colors">4. Comprovar e Finalizar</h4>
+                  <p className="text-[11px] text-slate-500 leading-relaxed font-semibold">
+                    Envie fotos do serviço feito acessando o chamado em <strong>"Minhas Solicitações"</strong> para homologar e evitar multas.
+                  </p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
 
         {/* Action Grid */}
         <main className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

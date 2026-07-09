@@ -30,10 +30,18 @@ export default function ListaSolicitacoesPage() {
     const resultsMap = new Map<string, any>();
 
     const emitMerged = () => {
+      const getMillis = (dateObj: any) => {
+        if (!dateObj) return 0;
+        if (typeof dateObj.toMillis === "function") return dateObj.toMillis();
+        if (typeof dateObj.toDate === "function") return dateObj.toDate().getTime();
+        if (dateObj instanceof Date) return dateObj.getTime();
+        if (typeof dateObj === "string") return new Date(dateObj).getTime();
+        if (typeof dateObj === "number") return dateObj;
+        return 0;
+      };
+
       const merged = Array.from(resultsMap.values()).sort((a, b) => {
-        const ta = a.createdAt?.toMillis?.() ?? 0;
-        const tb = b.createdAt?.toMillis?.() ?? 0;
-        return tb - ta;
+        return getMillis(b.createdAt) - getMillis(a.createdAt);
       });
       setSolicitacoes(merged);
       setLoading(false);
@@ -41,14 +49,12 @@ export default function ListaSolicitacoesPage() {
 
     const q1 = query(
       collection(db, "solicitacoes"),
-      where("userId", "==", user.uid),
-      orderBy("createdAt", "desc")
+      where("userId", "==", user.uid)
     );
 
     const q2 = query(
       collection(db, "solicitacoes"),
-      where("solicitantesAdicionais", "array-contains", user.uid),
-      orderBy("createdAt", "desc")
+      where("solicitantesAdicionais", "array-contains", user.uid)
     );
 
     const unsub1 = onSnapshot(q1, (snap) => {
@@ -111,6 +117,8 @@ export default function ListaSolicitacoesPage() {
             <button onClick={() => setFiltro('Todos')} className={getFilterButtonClass('Todos')}>Todos</button>
             <button onClick={() => setFiltro('Em Análise')} className={getFilterButtonClass('Em Análise')}>Em Análise</button>
             <button onClick={() => setFiltro('Aprovado')} className={getFilterButtonClass('Aprovado')}>Aprovados</button>
+            <button onClick={() => setFiltro('Aguardando Validação')} className={getFilterButtonClass('Aguardando Validação')}>Aguardando Validação</button>
+            <button onClick={() => setFiltro('Concluído')} className={getFilterButtonClass('Concluído')}>Concluídos</button>
             <button onClick={() => setFiltro('Recusado')} className={getFilterButtonClass('Recusado')}>Recusados</button>
         </div>
 
@@ -149,7 +157,7 @@ export default function ListaSolicitacoesPage() {
                                   <p className="font-bold text-slate-750 text-sm sm:text-base flex flex-wrap items-center gap-x-2 gap-y-1">
                                     {solicitacao.type}{" "}
                                     <span className="text-[10px] font-bold text-slate-400 uppercase bg-slate-100 px-2 py-0.5 rounded">
-                                      #{solicitacao.id.substring(0, 6)}
+                                      #{/^\d{14}$/.test(solicitacao.id) ? solicitacao.id : solicitacao.id.substring(0, 8)}
                                     </span>
                                     {isReforco && (
                                       <span className="inline-flex items-center gap-1 text-[9px] font-bold text-blue-700 bg-blue-50 border border-blue-150 rounded-full px-2 py-0.5">
@@ -165,6 +173,11 @@ export default function ListaSolicitacoesPage() {
                                     <Calendar className="w-3 h-3 text-slate-350" />
                                     Última atualização: {dataUltimaAtualizacao}
                                   </p>
+                                  {solicitacao.status === 'Aprovado' && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 font-bold px-2 py-0.5 rounded mt-1.5">
+                                      ⚠️ Requer foto de comprovação
+                                    </span>
+                                  )}
                               </div>
                               <div className="flex items-center gap-3 self-end sm:self-center flex-shrink-0">
                                   <span className={`etiqueta-status status-${classeStatus}`}>{solicitacao.status}</span>

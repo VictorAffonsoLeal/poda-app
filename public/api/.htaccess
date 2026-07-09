@@ -1,0 +1,4 @@
+# Aumentar o limite de upload de arquivos para suportar fotos de alta resolução das câmeras dos celulares
+php_value upload_max_filesize 64M
+php_value post_max_size 64M
+php_value memory_limit 128M

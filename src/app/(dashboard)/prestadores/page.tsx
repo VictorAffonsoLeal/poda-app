@@ -90,7 +90,7 @@ export default function PrestadoresPage() {
               <div>
                 <div className="flex justify-between items-start mb-4 gap-4">
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-base sm:text-lg font-bold text-slate-850 leading-tight truncate">{prestador.razaoSocial}</h3>
+                    <h3 className="text-base sm:text-lg font-bold text-slate-800 leading-tight truncate">{prestador.razaoSocial}</h3>
                     <div className="inline-flex items-center gap-1 bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-800 px-2.5 py-1 rounded-xl text-[10px] font-extrabold mt-2 border border-emerald-100 shadow-sm">
                       <Star className="w-3.5 h-3.5 fill-emerald-500 text-emerald-500" /> 
                       Credenciado SMA

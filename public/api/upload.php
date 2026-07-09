@@ -24,7 +24,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $originalName = basename($_FILES['files']['name'][$key]);
             
             if ($errorCode !== UPLOAD_ERR_OK) {
-                $response["errors"][] = "Upload error code: " . $errorCode . " for " . $originalName;
+                switch ($errorCode) {
+                    case UPLOAD_ERR_INI_SIZE:
+                        $response["errors"][] = "O arquivo '" . $originalName . "' excede o limite de tamanho permitido pelo servidor PHP (upload_max_filesize no php.ini).";
+                        break;
+                    case UPLOAD_ERR_FORM_SIZE:
+                        $response["errors"][] = "O arquivo '" . $originalName . "' excede o limite definido no formulário HTML.";
+                        break;
+                    case UPLOAD_ERR_PARTIAL:
+                        $response["errors"][] = "O arquivo '" . $originalName . "' foi enviado apenas parcialmente.";
+                        break;
+                    case UPLOAD_ERR_NO_FILE:
+                        $response["errors"][] = "Nenhum arquivo '" . $originalName . "' foi enviado.";
+                        break;
+                    case UPLOAD_ERR_NO_TMP_DIR:
+                        $response["errors"][] = "Servidor PHP com erro: pasta temporária ausente.";
+                        break;
+                    case UPLOAD_ERR_CANT_WRITE:
+                        $response["errors"][] = "Falha de gravação: sem permissão para salvar o arquivo no disco do servidor.";
+                        break;
+                    default:
+                        $response["errors"][] = "Erro desconhecido no upload (código " . $errorCode . ") do arquivo: " . $originalName;
+                }
                 continue;
             }
 
